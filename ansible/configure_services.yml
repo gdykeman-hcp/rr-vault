@@ -1,0 +1,40 @@
+---
+- name: Template Vault, Consul, Nomad config files
+  ansible.builtin.template:
+    src: "templates/{{ item }}_config.hcl.j2"
+    dest: "files/{{item}}_{{ hostvars[inventory_hostname].tags.Name }}.hcl"
+  delegate_to: localhost
+  become: false
+  loop: "{{ hashicorp_services }}"
+
+- name: Copy over Config files
+  ansible.builtin.copy:
+    src: "files/{{item}}_{{ hostvars[inventory_hostname].tags.Name }}.hcl"
+    dest: "/etc/{{item}}.d/{{item}}.hcl"
+  loop: "{{ hashicorp_services }}"
+
+- name: Copy over license files
+  ansible.builtin.copy:
+    src: "files/{{item}}.hclic"
+    dest: "/etc/{{item}}.d/"
+  loop: "{{ hashicorp_services }}"
+
+- name: Ensure certs directory exists
+  ansible.builtin.file:
+    path: "/etc/{{item}}.d/certs/"
+    state: directory
+  loop: "{{ hashicorp_services }}"
+
+- name: Copy over cert files
+  ansible.builtin.copy:
+    src: "certs/{{item}}/"
+    dest: "/etc/{{item}}.d/certs/"
+  loop: "{{ hashicorp_services }}"
+
+- name: Enable and Start HashiCorp Services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  ignore_errors: true
+  loop: "{{ hashicorp_services }}"

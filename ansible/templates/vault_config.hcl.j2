@@ -1,0 +1,41 @@
+ui = true
+# API and Cluster addresses using the node's IP
+api_addr      = "https://{{ hostvars[inventory_hostname].private_dns_name }}:8200"
+cluster_addr  = "https://{{ hostvars[inventory_hostname].private_dns_name }}:8201"
+cluster_name = "hashistack-vault"
+# Disable mlock for systems that don't support it
+disable_mlock = true
+
+
+# Raft Storage Configuration
+storage "raft" {
+   path = "/opt/vault/data"
+   node_id = "{{ hostvars[inventory_hostname].tags.Name | replace('_', '-') }}"
+
+{% for host in groups['tag_Group_hashicorp_redhat'] %}
+   retry_join {
+     leader_api_addr = "https://{{ hostvars[host].private_dns_name }}:8200"
+     leader_ca_cert_file = "/etc/{{item}}.d/certs/{{item}}_CA.crt"
+     leader_client_cert_file = "/etc/{{item}}.d/certs/{{item}}_server.crt"
+     leader_client_key_file = "/etc/{{item}}.d/certs/{{item}}_server.key"
+     tls_skip_verify = true
+   }
+{% endfor %}
+}
+# HTTPS Listener Configuration
+listener "tcp" {
+  address       = "0.0.0.0:8200"
+  cluster_address = "0.0.0.0:8201"
+  tls_cert_file = "/etc/{{item}}.d/certs/{{item}}_server.crt"
+  tls_key_file  = "/etc/{{item}}.d/certs/{{item}}_server.key"
+  tls_disable = false
+}
+
+# License for Vault Enterprise
+license_path = "/etc/{{item}}.d/{{item}}.hclic"
+
+# # Telemetry
+# telemetry {
+#   disable_hostname = true
+#   prometheus_retention_time = "12h"
+# }

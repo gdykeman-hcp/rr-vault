@@ -1,0 +1,87 @@
+---
+### Unseal First Vault Node
+- name: Configure tag_Name_rhel_server1
+  hosts: tag_Name_rhel_server1
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Wait up to 120 seconds for target connection to become reachable/usable
+      ansible.builtin.wait_for_connection:
+      timeout: 120
+
+- name: Configure tag_Name_rhel_server1
+  hosts: tag_Name_rhel_server1
+  become: true
+  gather_facts: false
+
+  environment:
+    VAULT_CLIENT_CERT: "/etc/vault.d/certs/vault_server.crt"
+    VAULT_CLIENT_KEY: "/etc/vault.d/certs/vault_server.key"
+    VAULT_CACERT: "/etc/vault.d/certs/vault_CA.crt"
+
+  pre_tasks:
+    - name: debug
+      ansible.builtin.debug:
+        var: hostvars[inventory_hostname]
+      run_once: true
+      tags: single
+
+  tasks:
+    - name: Set hostname
+      ansible.builtin.hostname:
+        name: "{{ hostvars[inventory_hostname].tags.Name | replace('_', '-') }}"
+
+    - name: Include tasks for "{{ hostvars[inventory_hostname].tags.Name }}"
+      ansible.builtin.include_tasks:
+        file: configure_services.yml
+
+    - name: Vault Operator Init
+      ansible.builtin.shell: "vault operator init -key-shares=1 -key-threshold=1 -format=json > /etc/vault.d/vault_init.json"
+      args:
+        creates: /etc/vault.d/vault_init.json
+
+    - name: slurp vault_init.json
+      slurp:
+        src: /etc/vault.d/vault_init.json
+      register: vault_init
+    
+    - ansible.builtin.set_fact:
+        vault_unseal_key: "{{ vault_init.content | b64decode }}"
+
+### If you want to save vault root token to localhost
+    - ansible.builtin.copy:
+        content: "{{ vault_unseal_key.root_token}}"
+        dest: "./root_token.txt"
+        mode: 0600
+      delegate_to: localhost
+      become: no
+
+    - name: Vault Operator Unseal
+      ansible.builtin.shell: "vault operator unseal $(jq -r .unseal_keys_b64[0] /etc/vault.d/vault_init.json)"
+      args:
+        creates: /etc/vault.d/vault_unseal.json
+
+---
+### Unseal Other Vault Nodes
+- name: Configure tag_Name_rhel_server 2 & 3
+  hosts: tag_Name_rhel_server2, tag_Name_rhel_server3
+  become: true
+  gather_facts: false
+
+  environment:
+    VAULT_CLIENT_CERT: "/etc/vault.d/certs/vault_server.crt"
+    VAULT_CLIENT_KEY: "/etc/vault.d/certs/vault_server.key"
+    VAULT_CACERT: "/etc/vault.d/certs/vault_CA.crt"
+
+  tasks:
+    - name: Set hostname
+      ansible.builtin.hostname:
+        name: "{{ hostvars[inventory_hostname].tags.Name | replace('_', '-') }}"
+
+    - name: Include tasks for "{{ hostvars[inventory_hostname].tags.Name }}"
+      ansible.builtin.include_tasks:
+        file: configure_services.yml
+
+    - name: Vault Operator Unseal
+      ansible.builtin.shell: "vault operator unseal {{ hostvars[groups['tag_Name_rhel_server1'][0]].vault_unseal_key.unseal_keys_b64[0] }}"
