@@ -1,0 +1,1 @@
+# Template repo for installing & configuring HashiCorp Vault
